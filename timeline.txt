@@ -1,0 +1,55 @@
+			Oct 2024: Initial research and technical preparation.
+				1. Research and Technology Selection:
+					○ Research large models (e.g., GPT, BERT) APIs and test integration methods.
+					○ Finalize the tech stack: Node.js, TypeScript, VSCode plugin framework, and choose the appropriate large model services (e.g., OpenAI API, Hugging Face).
+				2. Initial Design and Development:
+					○ Begin building the plugin framework, ensuring the plugin runs in VSCode and can interact with APIs.
+					○ Implement the basic plugin UI and design a simple error message display.
+					○ Write the initial error detection logic, using rules and static analysis techniques to identify basic syntax errors.
+					
+			
+			Nov 2024: Core feature implementation and User testing
+				• Core Functionality Development:
+					• Implement initial error detection features and integrate them with a large model API to ensure smart suggestions are provided.
+					• Start designing and developing the framework for interactive tutorials, completing at least one tutorial for common error fixes.
+				• Large Model Integration:
+					• Test different large models and choose the one best suited for error detection and explanation.
+					• Implement natural language explanations in error messages, using the large model to provide human-like explanations.
+				• Real-Time Feedback:
+					• Implement real-time feedback that detects errors as users type, without waiting for code execution.
+				Preliminary User Testing:
+					• Invite some users (both beginners and experienced developers) to test an early version of the plugin and gather feedback.
+					• Refine the error messages and user interface based on the feedback.
+					
+				
+			Dec 2024:  Smart error suggestion and interactive tutorials
+					• Develop advanced smart error suggestion features, using a large model to provide context-aware suggestions and fixes.
+					• Complete more interactive tutorials to ensure users can receive instant guidance on fixing common errors.
+					• Implement personalized error suggestions based on user experience levels.
+					• Conduct further user testing and gather feedback.
+				
+				
+			Jan 2025:   Features expantion and multi-language 
+					• Expand the plugin’s capabilities by adding more error types and suggestions for code optimization.
+					• Refine the plugin's user interface to ensure it is intuitive and user-friendly.
+					• Continue user testing, focusing on the experience of users at different skill levels, and make personalized adjustments.
+					• Implement multi-language support (if needed) to ensure the plugin is usable by developers worldwide.
+				
+				
+			Feb 2025:    Feature refinement and optimization
+					• Refine and optimize features based on user feedback, fixing bugs and improving existing functions.
+					• Expand syntax checking and error suggestion rules to handle more complex code scenarios.
+					• Conduct extensive performance testing to ensure the plugin's stability across different development environments.
+					• Prepare for publishing on the VSCode Marketplace.
+					
+				
+			Mar 2025:   Final testing and launch preparation
+					• Integrate all features and ensure the plugin runs smoothly across platforms and environments.
+					• Conduct final user testing, gathering feedback on the overall user experience and functionality.
+					• Fix any remaining bugs and further optimize performance and interface.
+					• Prepare the release materials, including user documentation, installation guides, and manuals.
+				
+				
+			Apr 2025:   Report  and Screencast
+					• Write a complete project report, detailing the project background, development process, technical implementation, testing results, and user feedback.
+					• Prepare a screencast to show the plugin's features, innovations, and technical implementations.
