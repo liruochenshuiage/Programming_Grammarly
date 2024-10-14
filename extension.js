@@ -1,36 +1,48 @@
-// The module 'vscode' contains the VS Code extensibility API
-// Import the module and reference it with the alias vscode in your code below
 const vscode = require('vscode');
+const { Configuration, OpenAIApi } = require('openai');
 
-// This method is called when your extension is activated
-// Your extension is activated the very first time the command is executed
+// 配置 OpenAI API
+const configuration = new Configuration({
+  apiKey: process.env.OPENAI_API_KEY,  // 使用环境变量获取 API 密钥
+});
+const openai = new OpenAIApi(configuration);
 
-/**
- * @param {vscode.ExtensionContext} context
- */
-function activate(context) {
-
-	// Use the console to output diagnostic information (console.log) and errors (console.error)
-	// This line of code will only be executed once when your extension is activated
-	console.log('Congratulations, your extension "programming-grammarly" is now active!');
-
-	// The command has been defined in the package.json file
-	// Now provide the implementation of the command with  registerCommand
-	// The commandId parameter must match the command field in package.json
-	const disposable = vscode.commands.registerCommand('programming-grammarly.helloWorld', function () {
-		// The code you place here will be executed every time your command is executed
-
-		// Display a message box to the user
-		vscode.window.showInformationMessage('Hello World from Programming Grammarly!');
-	});
-
-	context.subscriptions.push(disposable);
+async function getAIResponse(codeSnippet) {
+  try {
+    const response = await openai.createCompletion({
+      model: 'text-davinci-003',  
+      prompt: `Check the following code for errors: \n\n${codeSnippet}`,
+      max_tokens: 100,
+      temperature: 0.7,
+    });
+    return response.data.choices[0].text;
+  } catch (error) {
+    console.error('Error calling OpenAI API:', error);
+    return 'Failed to get response from OpenAI';
+  }
 }
 
-// This method is called when your extension is deactivated
+async function provideErrorFeedback() {
+  const editor = vscode.window.activeTextEditor;
+  if (editor) {
+    const code = editor.document.getText();
+    const aiSuggestion = await getAIResponse(code);
+    vscode.window.showInformationMessage(`AI Suggestion: ${aiSuggestion}`);
+  }
+}
+
+function activate(context) {
+  const disposable = vscode.commands.registerCommand('programming-grammarly.checkCode', function () {
+    provideErrorFeedback();
+  });
+
+  context.subscriptions.push(disposable);
+}
+
 function deactivate() {}
 
 module.exports = {
-	activate,
-	deactivate
-}
+  activate,
+  deactivate
+};
+

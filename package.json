@@ -9,13 +9,18 @@
   "categories": [
     "Other"
   ],
-  "activationEvents": [],
   "main": "./extension.js",
   "contributes": {
-    "commands": [{
-      "command": "programming-grammarly.helloWorld",
-      "title": "Hello World"
-    }]
+    "commands": [
+      {
+        "command": "programming-grammarly.helloWorld",
+        "title": "Hello World"
+      },
+      {
+        "command": "programming-grammarly.checkCode",
+        "title": "Check Code with AI"
+      }
+    ]
   },
   "scripts": {
     "lint": "eslint .",
@@ -31,3 +36,5 @@
     "@vscode/test-electron": "^2.4.1"
   }
 }
+
+
