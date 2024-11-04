@@ -50,7 +50,6 @@ async function getAIResponse(codeSnippet) {
       max_tokens: 100,
       temperature: 0.7,
     });
-    console.log("API Response:", response);
     return response.choices[0].message.content;
   } catch (error) {
     console.error('Error calling OpenAI API:', error);
@@ -58,44 +57,40 @@ async function getAIResponse(codeSnippet) {
   }
 }
 
+// 使用右下角提示框显示错误提示和 AI 建议
+async function showBottomRightMessageWithSuggestion(codeSnippet) {
+  const hasErrors = await detectErrors(codeSnippet);
+
+  if (hasErrors) {
+    const choice = await vscode.window.showInformationMessage(
+      '代码中发现错误。是否查看详细的 AI 建议？',
+      '查看建议', '忽略'
+    );
+
+    if (choice === '查看建议') {
+      const aiSuggestion = await getAIResponse(codeSnippet);
+      // 在右下角显示详细的 AI 建议
+      vscode.window.showInformationMessage(`AI Suggestion: ${aiSuggestion}`);
+    }
+  } else {
+    vscode.window.showInformationMessage('代码未发现明显错误。');
+  }
+}
+
 // 扩展的激活函数
 function activate(context) {
   console.log('Extension "programming-grammarly" is now active!');
 
-  // 注册 helloWorld 命令
-  let helloCommand = vscode.commands.registerCommand('programming-grammarly.helloWorld', function () {
-    vscode.window.showInformationMessage('Hello World from Programming Grammarly!');
-  });
-
-  // 注册 checkCode 命令
   let checkCodeCommand = vscode.commands.registerCommand('programming-grammarly.checkCode', async function () {
     const editor = vscode.window.activeTextEditor;
     if (editor) {
       const code = editor.document.getText();
-      
-      // 先检测是否有错误
-      const hasErrors = await detectErrors(code);
-      if (hasErrors) {
-        // 如果检测到错误，询问用户是否查看建议
-        const choice = await vscode.window.showInformationMessage(
-          '发现代码错误，是否查看AI的建议？',
-          '是', '否'
-        );
-        if (choice === '是') {
-          // 如果用户选择查看建议，则调用 AI 提供详细建议
-          getAIResponse(code).then((aiSuggestion) => {
-            vscode.window.showInformationMessage(`AI Suggestion: ${aiSuggestion}`);
-          });
-        }
-      } else {
-        vscode.window.showInformationMessage('代码没有发现明显错误');
-      }
+      await showBottomRightMessageWithSuggestion(code); // 使用右下角提示框显示错误和 AI 建议
     } else {
-      vscode.window.showInformationMessage('No active editor found.');
+      vscode.window.showInformationMessage('未找到活动的编辑器。');
     }
   });
 
-  context.subscriptions.push(helloCommand);
   context.subscriptions.push(checkCodeCommand);
 }
 
