@@ -16,7 +16,7 @@ async function getOpenAIInstance() {
   });
 }
 
-// 检测错误的函数
+// detect error
 async function detectErrors(codeSnippet) {
   try {
     const openai = await getOpenAIInstance();
@@ -37,7 +37,7 @@ async function detectErrors(codeSnippet) {
   }
 }
 
-// 获取AI建议的函数
+// get AI response
 async function getAIResponse(codeSnippet) {
   try {
     const openai = await getOpenAIInstance();
@@ -57,27 +57,26 @@ async function getAIResponse(codeSnippet) {
   }
 }
 
-// 使用右下角提示框显示错误提示和 AI 建议
+//  show error and AI response
 async function showBottomRightMessageWithSuggestion(codeSnippet) {
   const hasErrors = await detectErrors(codeSnippet);
 
   if (hasErrors) {
     const choice = await vscode.window.showInformationMessage(
-      '代码中发现错误。是否查看详细的 AI 建议？',
-      '查看建议', '忽略'
+      'There are some errors in your code, do you want see AI suggestion?',
+      'Show suggestion', 'ignore'
     );
 
-    if (choice === '查看建议') {
+    if (choice === 'Show suggestion') {
       const aiSuggestion = await getAIResponse(codeSnippet);
-      // 在右下角显示详细的 AI 建议
       vscode.window.showInformationMessage(`AI Suggestion: ${aiSuggestion}`);
     }
   } else {
-    vscode.window.showInformationMessage('代码未发现明显错误。');
+    vscode.window.showInformationMessage('There is no error in your code');
   }
 }
 
-// 扩展的激活函数
+// active extend 
 function activate(context) {
   console.log('Extension "programming-grammarly" is now active!');
 
