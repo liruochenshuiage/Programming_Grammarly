@@ -1,0 +1,145 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AI Suggestion Prompt</title>
+    <style>
+        body {
+            margin: 0;
+            padding: 0;
+            font-family: Arial, sans-serif;
+            height: 100vh;
+            background-color: #f0f0f0; /* 背景色 */
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+        }
+        .header {
+            position: absolute;
+            top: 20px;
+            left: 20px;
+            right: 20px;
+            display: flex;
+            justify-content: space-between;
+        }
+        .header img {
+            width: 24px;
+            height: 24px;
+            cursor: pointer;
+        }
+        .image-container img {
+            width: 150px; /* 图片大小 */
+            margin-bottom: 20px; /* 图片和文字间距 */
+        }
+        .processing-text {
+            font-size: 32px; /* 大文字 */
+            font-weight: bold;
+            color: #333;
+            margin-bottom: 20px;
+            text-align: center;
+        }
+        .progress-bar-container {
+            width: 80%;
+            max-width: 600px;
+            margin-bottom: 20px;
+            height: 20px;
+            background-color: #e0e0e0;
+            border-radius: 10px;
+            overflow: hidden;
+            position: relative;
+        }
+        .progress-bar-fill {
+            height: 100%;
+            width: 0; /* 初始宽度为0 */
+            background: linear-gradient(90deg, #4caf50, #81c784);
+            border-radius: 10px 0 0 10px;
+            transition: width 0.3s ease; /* 平滑动画 */
+        }
+        .progress-percentage {
+            font-size: 18px;
+            color: #333;
+            margin-top: 10px; /* 距离进度条一定间距 */
+        }
+        .small-text {
+            font-size: 14px;
+            color: #555;
+            margin-bottom: 30px; /* 增加间距 */
+            text-align: center;
+        }
+        .cancel-button {
+            padding: 10px 20px;
+            background-color: #f44336;
+            color: #fff;
+            font-size: 16px;
+            font-weight: bold;
+            border: none;
+            border-radius: 10px;
+            cursor: pointer;
+            text-align: center;
+            transition: background-color 0.3s ease;
+        }
+        .cancel-button:hover {
+            background-color: #d32f2f;
+        }
+    </style>
+</head>
+<body>
+    <!-- 顶部图标 -->
+    <div class="header">
+        <img src="back.png" alt="Back" onclick = "sendBack()">
+        <img src="global.png" alt="Global">
+    </div>
+    <!-- 中心内容 -->
+    <div class="image-container">
+        <img src="webview1.png" alt="Detect Result">
+    </div>
+    <div class="processing-text">Processing...</div>
+    <!-- 动态进度条 -->
+    <div class="progress-bar-container">
+        <div class="progress-bar-fill" id="progress-fill"></div>
+    </div>
+    <div class="progress-percentage" id="progress-percentage">0%</div>
+    <div class="small-text">Please hold on while we analyze your code</div>
+    <!-- 取消按钮 -->
+    <button class="cancel-button" onclick="sendBack()">Cancel</button>
+
+    <script>
+        const vscode = acquireVsCodeApi();
+        let progress = 0;
+        const progressFill = document.getElementById('progress-fill');
+        const progressPercentage = document.getElementById('progress-percentage');
+    
+        // 默认进度条时间为 5 秒（备用值）
+        let progressTime = 10000;
+    
+        // 接收来自 extension.js 的消息
+        window.addEventListener('message', (event) => {
+            const message = event.data;
+            if (message.command === 'setProgressTime') {
+                progressTime = message.time; // 更新进度条总时长
+                console.log(`Progress bar time set to ${progressTime}ms`);
+                startProgress();
+            }
+        });
+    
+        function sendBack() {
+            vscode.postMessage({ command: 'back from webview2' });
+        }
+    
+        function startProgress() {
+            const interval = progressTime / 100; // 计算每次更新间隔
+            const progressInterval = setInterval(() => {
+                if (progress < 100) {
+                    progress += 1; // 每次增加 1%
+                    progressFill.style.width = progress + '%';
+                    progressPercentage.textContent = progress + '%';
+                } else {
+                    clearInterval(progressInterval); // 停止更新
+                }
+            }, interval);
+        }
+    </script>
+</body>
+</html>

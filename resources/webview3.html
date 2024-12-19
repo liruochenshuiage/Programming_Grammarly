@@ -1,0 +1,189 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AI Suggestion Prompt</title>
+    <style>
+        body {
+            margin: 0;
+            padding: 0;
+            font-family: Arial, sans-serif;
+            height: 100vh;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            background-color: #f0f0f0; /* 背景色 */
+        }
+        .header {
+            position: absolute;
+            top: 20px;
+            left: 20px;
+            right: 20px;
+            display: flex;
+            justify-content: space-between;
+        }
+        .header img {
+            width: 24px;
+            height: 24px;
+            cursor: pointer;
+        }
+        .image-container {
+            position: absolute;
+            top: 15%;
+            left: 50%;
+            transform: translateX(-50%);
+            text-align: center;
+        }
+        .image-container img {
+            width: 250px; /* 图片大小 */
+        }
+        .review-text {
+            position: absolute;
+            top: 45%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            font-size: 35px; /* 标题文字大小 */
+            font-weight: bold; /* 加粗 */
+            color: #333; /* 深灰色文字 */
+            text-align: center;
+        }
+        .white-box {
+            position: absolute;
+            top: 60%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            background-color: #ffffff; /* 消息框背景 */
+            border-radius: 10px; /* 圆角 */
+            padding: 20px; /* 内边距 */
+            box-shadow: 0 2px 6px rgba(0, 0, 0, 0.1); /* 阴影 */
+            text-align: left; /* 左对齐文字 */
+            width: 40%; /* 自适应宽度 */
+            height: auto;
+            font-weight: bold;
+            color: #333;
+            font-size: 18px;
+            overflow: hidden; /* 超出隐藏 */
+            white-space: pre-wrap;
+            word-wrap: break-word;
+            word-break: keep-all;
+        }
+        .button-container {
+            max-width: 600px; /* 与白框对齐 */
+            position: absolute;
+            top: 75%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            display: flex;
+            gap: 120px;
+        }
+        .button {
+            width: 150px; /* 按钮宽度 */
+            padding: 15px; /* 按钮内边距 */
+            border: none; /* 去掉边框 */
+            border-radius: 10px; /* 圆角按钮 */
+            font-size: 18px; /* 按钮文字大小 */
+            font-weight: bold; /* 加粗文字 */
+            cursor: pointer; /* 鼠标样式 */
+            text-align: center;
+            color: #fff; /* 白色文字 */
+        }
+        .button-next {
+            background-color: #4caf50; /* 绿色背景 */
+        }
+        .button-next:hover {
+            background-color: #45a049; /* 鼠标悬浮时颜色加深 */
+            transform: scale(1.05);
+        }
+        .button-ignore {
+            background-color: #f44336; /* 红色背景 */
+        }
+        .button-ignore:hover {
+            background-color: #d32f2f; /* 鼠标悬浮时颜色加深 */
+            transform: scale(1.05);
+        }
+    </style>
+</head>
+<body>
+    <!-- 顶部图标 -->
+    <div class="header">
+        <img src="back.png" alt="Back" onclick="sendBack()">
+        <img src="global.png" alt="Global">
+    </div>
+    <!-- 图片内容 -->
+    <div class="image-container">
+        <img src="webview2.png" alt="Updated View">
+    </div>
+    <!-- 文本内容 -->
+    <div class="review-text">Please Review AI Suggestion</div>
+    <!-- 白色框 -->
+    <div class="white-box" id="suggestion-box">
+        <!-- AI Suggestion will be dynamically inserted here -->
+    </div>
+    <!-- 按钮容器 -->
+    <div class="button-container">
+        <button class="button button-next" id="next-button" onclick="showNext()">Next</button>
+        <button class="button button-ignore" onclick="Ignore()">Ignore</button>
+    </div>
+
+    <script>
+        const vscode = acquireVsCodeApi();
+    
+        let currentPageIndex = 0; // 当前页索引
+        let suggestionPages = []; // 存储分页后的建议
+    
+        function sendBack() {
+            // 如果当前是第一页，发送 "back to webview1"
+            if (currentPageIndex === 0) {
+                vscode.postMessage({ command: 'back from webview3' });
+            } else {
+                // 否则，显示上一页内容
+                currentPageIndex--;
+                document.getElementById('suggestion-box').textContent = suggestionPages[currentPageIndex];
+    
+                // 如果回到第一页，隐藏“Back”按钮（如果需要）
+                console.log('Navigated to previous suggestion page.');
+            }
+        }
+    
+        function Ignore() {
+            vscode.postMessage({ command: 'Ignore' });
+        }
+    
+        function showNext() {
+            currentPageIndex++;
+            if (currentPageIndex < suggestionPages.length) {
+                document.getElementById('suggestion-box').textContent = suggestionPages[currentPageIndex];
+            }
+    
+            // 如果到达最后一页，隐藏“Next”按钮
+            if (currentPageIndex === suggestionPages.length - 1) {
+                document.getElementById('next-button').style.display = 'none';
+            }
+        }
+    
+        // 监听扩展传递的消息
+        window.addEventListener('message', (event) => {
+            const message = event.data;
+    
+            if (message.command === 'updateSuggestion') {
+                suggestionPages = message.suggestionPages || [];
+                currentPageIndex = 0;
+    
+                // 显示第一页内容
+                if (suggestionPages.length > 0) {
+                    document.getElementById('suggestion-box').textContent = suggestionPages[0];
+                }
+    
+                // 如果有多页，显示“Next”按钮，否则隐藏
+                if (suggestionPages.length > 1) {
+                    document.getElementById('next-button').style.display = 'block';
+                } else {
+                    document.getElementById('next-button').style.display = 'none';
+                }
+            }
+        });
+    </script>
+</body>
+</html>

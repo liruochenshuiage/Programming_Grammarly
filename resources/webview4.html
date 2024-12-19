@@ -1,0 +1,102 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AI Suggestion Prompt</title>
+    <style>
+        body {
+            margin: 0;
+            padding: 0;
+            font-family: Arial, sans-serif;
+            height: 100vh;
+            display: flex;
+            flex-direction: column; /* 列布局 */
+            align-items: center; /* 水平居中 */
+            justify-content: center; /* 垂直居中 */
+            background-color: #f9f9f9; /* 浅灰背景 */
+        }
+        .header {
+            position: absolute; /* 绝对定位 */
+            top: 20px;
+            width: 100%;
+            display: flex;
+            justify-content: space-between; /* 图标两端对齐 */
+            padding: 0 20px;
+            box-sizing: border-box;
+        }
+        .header img {
+            width: 24px;
+            height: 24px;
+            cursor: pointer;
+        }
+        .image-container {
+            position: absolute;
+            top: 15%;
+            left: 50%;
+            transform: translateX(-50%);
+            text-align: center;
+        }
+        .image-container img {
+            width: 250px; /* 图片大小 */
+        }
+
+        .status-text {
+            font-size: 35px; /* 文字大小 */
+            font-weight: bold; /* 加粗 */
+            color: #333; /* 深灰色文字 */
+            margin-top: 50px;
+            margin-bottom: 30px; /* 与按钮的间距 */
+            text-align: center;
+        }
+        .button-container {
+            display: flex;
+            justify-content: center;
+            margin-top: 100px;
+        }
+        .action-button {
+            padding: 15px 50px; /* 按钮内边距 */
+            font-size: 16px; /* 按钮文字大小 */
+            font-weight: bold; /* 按钮文字加粗 */
+            color: #fff; /* 按钮文字白色 */
+            border: none; /* 无边框 */
+            border-radius: 8px; /* 按钮圆角 */
+            cursor: pointer; /* 鼠标样式 */
+            transition: background-color 0.3s ease; /* 添加过渡效果 */
+        }
+        .no-button {
+            background-color: #f44336; /* 红色背景 */
+        }
+        .no-button:hover {
+            background-color: #d32f2f; /* 鼠标悬停时的颜色 */
+            transform: scale(1.05);
+        }
+    </style>
+</head>
+<body>
+    <!-- 顶部图标 -->
+    <div class="header">
+        <img src="back.png" alt="Back" onclick="sendClose">
+        <img src="global.png" alt="Global">
+    </div>
+    <!-- 图片内容 -->
+    <div class="image-container">
+        <img src="webview2.png" alt="Illustration">
+    </div>
+    <!-- 状态文字 -->
+    <div class="status-text">
+        Well Done! <br><br> 
+        No issues detected in your code!
+    </div>
+    <!-- 按钮 -->
+    <div class="button-container">
+        <button class="action-button no-button" onclick="sendClose()">Close</button>
+    </div>
+    <script>
+        const vscode = acquireVsCodeApi();
+        function sendClose(){
+            vscode.postMessage({ command: 'closePlugin'})
+        }
+    </script>
+</body>
+</html>
