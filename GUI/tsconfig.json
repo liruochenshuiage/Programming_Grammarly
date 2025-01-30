@@ -1,0 +1,19 @@
+{
+  "compilerOptions": {
+    "target": "esnext",                       // 目标 JavaScript 版本
+    "module": "esnext",                       // 使用 ESNext 模块系统
+    "lib": ["dom", "esnext"],                 // 支持浏览器 DOM API 和最新的 ES 语法
+    "jsx": "react-jsx",                       // 启用 React JSX 语法
+    "allowJs": true,                          // 允许引入 .js 文件
+    "strict": true,                            // 启用严格模式
+    "moduleResolution": "node",               // 解析 Node.js 风格的模块
+    "resolveJsonModule": true,                // 允许导入 JSON 文件
+    "esModuleInterop": true,                  // 兼容 CommonJS 和 ES 模块
+    "skipLibCheck": true,                      // 跳过 .d.ts 类型检查
+    "forceConsistentCasingInFileNames": true   // 强制文件名大小写一致
+  },
+  "include": ["src","global.d.ts","react-syntax-highlighter.d.ts"],                         // 指定 TypeScript 解析的文件目录
+  "exclude": ["node_modules", "build"]        // 排除的目录
+}
+
+  

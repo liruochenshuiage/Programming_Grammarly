@@ -1,7 +1,7 @@
 {
   "name": "programming-grammarly",
   "displayName": "Programming Grammarly",
-  "description": "This is a my third year project that helps you to detect and solve errors during programming.",
+  "description": "This is my third year project that helps you detect and solve errors during programming.",
   "version": "0.0.1",
   "engines": {
     "vscode": "^1.93.1"
@@ -10,20 +10,44 @@
     "Other"
   ],
   "main": "./extension.js",
-  "activationEvents": [
-  ],
+
+
   "contributes": {
     "commands": [
       {
-        "command": "programming-grammarly.helloWorld",
-        "title": "Hello World"
+        "command": "programming-grammarly.openChat",
+        "title": "Open Chat"
       },
       {
         "command": "programming-grammarly.checkCode",
         "title": "Check Code with AI"
+      },
+      {
+        
+          "command": "programming-grammarly.sendSelectedRange",
+          "title": "Send Selected Range"
+        },
+      {
+        "command": "programming-grammarly.sendCurrentFile",
+        "title": "Send Current File to AI"
+      }
+    ],
+    "keybindings": [
+      {
+        "command": "programming-grammarly.sendSelectedRange",
+        "key": "cmd+shift+l",
+        "mac": "cmd+shift+l",
+        "when": "editorTextFocus"
+      },
+      {
+        "command": "programming-grammarly.sendCurrentFile",
+        "key": "cmd+shift+r",
+        "mac": "cmd+shift+r",
+        "when": "editorTextFocus"
       }
     ]
   },
+
   "scripts": {
     "lint": "eslint .",
     "pretest": "npm run lint",
@@ -32,6 +56,7 @@
   "devDependencies": {
     "@types/mocha": "^10.0.8",
     "@types/node": "20.x",
+    "@types/react": "^19.0.8",
     "@types/vscode": "^1.94.0",
     "@vscode/test-cli": "^0.0.10",
     "@vscode/test-electron": "^2.4.1",

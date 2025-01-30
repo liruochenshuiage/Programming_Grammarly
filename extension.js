@@ -3,356 +3,249 @@ const fs = require('fs');
 const path = require('path');
 require('dotenv').config({ path: path.resolve(__dirname, '.env') });
 
-let checkInterval = null; // 定时器变量
-let currentPanel = null; // 当前 Webview 面板
-let lastCheckedCode = null; // 保存上一次检测的代码
-let lastKnownCode = null; // 缓存最近一次有效的代码
-let inWebview4 = false; // 标识是否在webview4中
+let currentPanel = null; // 缓存当前的 WebviewPanel
 
-// Dynamic import for OpenAI
+/**
+ * 动态加载 OpenAI 依赖
+ */
 async function loadOpenAI() {
-  const { default: OpenAI } = await import('openai');
-  return OpenAI;
+    const { default: OpenAI } = await import('openai');
+    return OpenAI;
 }
 
+/**
+ * 获取 OpenAI 实例
+ */
 async function getOpenAIInstance() {
-  const OpenAI = await loadOpenAI();
-  return new OpenAI({
-    apiKey: process.env.OPENAI_API_KEY,
-  });
-}
-
-// Detect errors in code
-async function detectErrors(codeSnippet) {
-  try {
-    const openai = await getOpenAIInstance();
-    const response = await openai.chat.completions.create({
-      model: 'gpt-3.5-turbo',
-      messages: [
-        { role: 'system', content: 'You are an assistant that only detects if there are any errors in the code, without providing any detailed suggestion.' },
-        { role: 'user', content: `Does the following code contain any errors? Reply with "Yes" or "No" only:\n\n${codeSnippet}` },
-      ],
-      max_tokens: 5,
-      temperature: 0.5,
+    const OpenAI = await loadOpenAI();
+    return new OpenAI({
+        apiKey: process.env.OPENAI_API_KEY,
     });
-    const answer = response.choices[0].message.content.trim();
-    return answer.toLowerCase() === 'yes';
-  } catch (error) {
-    console.error('Error detecting code errors:', error);
-    return false;
-  }
 }
 
+/**
+ * 调用 OpenAI，获取 AI 建议
+ * @param {string} codeSnippet - 需要分析的代码或文本
+ */
 async function getAISuggestion(codeSnippet) {
-  try {
-    const openai = await getOpenAIInstance();
-    const response = await openai.chat.completions.create({
-      model: 'gpt-3.5-turbo',
-      messages: [
-        { 
-          role: 'system', 
-          content: `You are a helpful assistant providing well-structured and concise code improvement suggestions. Format your response clearly as:
-          Problem: [Description of the issue]
-          /n Solution: [Detailed solution or improvement] NOTE: Add Blank line between Suggestion part, Solution Part and Example Code part.` 
-        },
-        { 
-          role: 'user', 
-          content: `Analyze the following code and provide your suggestions in the format mentioned above:\n\nCode:\n${codeSnippet}` 
-        },
-      ],
-      max_tokens: 500,
-      temperature: 0.7,
-    });
+    try {
+        const openai = await getOpenAIInstance();
+        const response = await openai.chat.completions.create({
+            model: 'gpt-3.5-turbo',
+            messages: [
+                {
+                    role: 'system',
+                    content: 'You are a helpful assistant providing structured code improvement suggestions.'
+                },
+                {
+                    role: 'user',
+                    content: `Analyze this code and suggest improvements:\n\n${codeSnippet}`
+                }
+            ],
+            max_tokens: 500,
+            temperature: 0.7,
+        });
 
-    const suggestion = response.choices[0].message.content.trim();
-    console.log('AI Suggestion:', suggestion); // 打印 AI 返回的建议
-    return suggestion;
-  } catch (error) {
-    console.error('Error getting AI suggestion:', error);
-    return 'Failed to get suggestions from AI.';
-  }
+        const suggestion = response.choices[0].message.content.trim();
+        return suggestion;
+    } catch (error) {
+        console.error('Error getting AI suggestion:', error);
+        return '⚠️ AI 请求失败，请检查 API 配置或网络状态！';
+    }
 }
 
-// Show Webview
-async function showWebview(context, webviewName, aiSuggestion = null) {
-  // 根据 webviewName 确定是否在 webview4
-  if (webviewName === 'webview4') {
-    inWebview4 = true;
-    console.log('Entered webview4.');
-  } else {
-    // 只要不是webview4就停止检测并标记不在webview4
-    if (inWebview4) {
-      console.log(`Leaving webview4 to ${webviewName}, stopping periodic check.`);
-      inWebview4 = false;
-      stopPeriodicCheck();
+/**
+ * 展示（或创建）Webview，并与前端进行消息通信
+ * @param {vscode.ExtensionContext} context
+ */
+async function showWebview(context) {
+    // 如果面板已经存在，则让它显示到前台即可
+    if (currentPanel) {
+        currentPanel.reveal(vscode.ViewColumn.Beside);
+        return;
     }
-  }
 
-  if (!currentPanel) {
+    // 否则，创建一个新的 WebviewPanel
     currentPanel = vscode.window.createWebviewPanel(
-      'aiSuggestion',
-      'AI Suggestion',
-      vscode.ViewColumn.Beside,
-      {
-        enableScripts: true,
-        retainContextWhenHidden: true,
-        localResourceRoots: [vscode.Uri.file(path.join(context.extensionPath, 'resources'))],
-      }
+        'aiChat',
+        'AI Chat',
+        vscode.ViewColumn.Beside,
+        {
+            enableScripts: true,
+            retainContextWhenHidden: true, // 让 Webview 不会因为隐藏就丢失状态
+        }
     );
 
+    // 当用户关闭面板时重置
     currentPanel.onDidDispose(() => {
-      currentPanel = null;
-      stopPeriodicCheck();
-      inWebview4 = false; // 关闭面板时视为离开webview4
+        currentPanel = null;
     });
-  }
 
-  const htmlFilePath = path.join(context.extensionPath, 'resources', `${webviewName}.html`);
-  let htmlContent = fs.readFileSync(htmlFilePath, 'utf8');
+    // 注册从 Webview 发来的消息监听器
+    currentPanel.webview.onDidReceiveMessage(async (message) => {
+        if (message.command === 'sendMessage') {
+            console.log('收到 WebView 消息:', message.text);
 
-  const backPath = currentPanel.webview.asWebviewUri(vscode.Uri.file(path.join(context.extensionPath, 'resources', 'back.png')));
-  const globalPath = currentPanel.webview.asWebviewUri(vscode.Uri.file(path.join(context.extensionPath, 'resources', 'global.png')));
-  const illustrationPath = currentPanel.webview.asWebviewUri(vscode.Uri.file(path.join(context.extensionPath, 'resources', 'webview2.png')));
-  const detectResultPath = currentPanel.webview.asWebviewUri(vscode.Uri.file(path.join(context.extensionPath, 'resources', 'webview1.png')));
+            // 调用 OpenAI，获取回复
+            const aiResponse = await getAISuggestion(message.text);
+            console.log('AI 回复:', aiResponse);
 
-  htmlContent = htmlContent
-    .replace('src="back.png"', `src="${backPath}"`)
-    .replace('src="global.png"', `src="${globalPath}"`)
-    .replace('src="webview2.png"', `src="${illustrationPath}"`)
-    .replace('src="webview1.png"', `src="${detectResultPath}"`);
-
-    if (aiSuggestion && webviewName === 'webview3') {
-      console.log('Formatted AI Suggestion before inserting into Webview:', aiSuggestion); // 打印 AI 建议
-      const formattedSuggestion = aiSuggestion.replace(/\/n/g, '<br>');
-      htmlContent = htmlContent.replace('<!-- AI Suggestion will be dynamically inserted here -->', formattedSuggestion);
-  }
-
-  currentPanel.webview.html = htmlContent;
-
-  let shouldStop = false;
-
-  currentPanel.webview.onDidReceiveMessage(async (message) => {
-      console.log('Received message:', message);
-  
-      if (message.command === 'back from webview1') {
-          shouldStop = true;
-          await showWebview(context, 'webview4');
-          console.log('Navigated back to webview4');
-          return;
-      }
-  
-      if (message.command === 'back from webview2') {
-          shouldStop = true;
-          await showWebview(context, 'webview');
-          console.log('Navigated back to webview');
-          return;
-      }
-
-      if (message.command === 'Ignore'){
-        await showWebview(context, 'webview4');
-      }
-
-      if (message.command === 'back from webview3'){
-        await showWebview(context, 'webview');
-      }
-
-      if (message.command === 'closePlugin') {
-        console.log('Closing plugin...');
-
-        // 销毁当前 Webview 面板
-        if (currentPanel) {
-            currentPanel.dispose();
-            currentPanel = null;
+            // 发消息给 WebView
+            if (currentPanel) {
+                currentPanel.webview.postMessage({ text: aiResponse });
+            }
         }
+    });
 
-        // 停止周期性检测（如果有）
-        stopPeriodicCheck();
-        console.log('Plugin successfully closed.');
+    // 读取你的 React 构建产物 (build/index.html)
+    const reactAppPath = path.join(context.extensionPath, 'GUI', 'build', 'index.html');
+    if (!fs.existsSync(reactAppPath)) {
+        console.error('React build/index.html 文件不存在！请先构建前端。');
         return;
     }
 
-  
-      if (message.command === 'yes') {
-          console.log('Navigating to webview2...');
-          await showWebview(context, 'webview2');
-  
-          // Generate a random wait time between 10 to 15 seconds
-          const randomWaitTime = Math.floor(Math.random() * (15000 - 5000 + 1)) + 5000;
-          console.log(`Waiting for ${randomWaitTime / 1000} seconds before navigating to webview3...`);
-  
-          // Send the random wait time to webview2 for progress bar synchronization
-          currentPanel.webview.postMessage({ command: 'setProgressTime', time: randomWaitTime });
-  
-          // Handle AI suggestion logic
-          const aiSuggestionPromise = new Promise(async (resolve) => {
-              try {
-                  if (!lastCheckedCode) {
-                      console.error('No previously checked code available.');
-                      vscode.window.showErrorMessage('No code available for suggestions. Please run the detection first.');
-                      resolve(null);
-                      return;
-                  }
-                  console.log('Requesting AI suggestion...');
-                  const aiSuggestion = await getAISuggestion(lastCheckedCode);
-                  resolve(aiSuggestion);
-              } catch (error) {
-                  console.error('Error during AI suggestion retrieval:', error);
-                  resolve(null);
-              }
-          });
-  
-          // Timer for the random wait time
-          const timerPromise = new Promise((resolve) => {
-              setTimeout(() => {
-                  resolve('timeout');
-              }, randomWaitTime);
-          });
-  
-          // Wait for either the AI suggestion or the timer to complete
-          const result = await Promise.race([aiSuggestionPromise, timerPromise]);
-  
-          // Check if navigation should stop
-          if (shouldStop) {
-              console.log('Navigation to webview3 was stopped.');
-              shouldStop = false; // Reset the flag for future navigation
-              return;
-          }
-  
-          // Handle AI suggestion or timeout result
-          if (result && result !== 'timeout') {
-            console.log('AI Suggestion received. Navigating to webview3...');
-        
-            // 按固定字符数拆分建议
-            const suggestionLength = 200; // 每页字符数
-            const suggestionPages = [];
-            for (let i = 0; i < result.length; i += suggestionLength) {
-                suggestionPages.push(result.slice(i, i + suggestionLength));
-            }
-        
-            // 发送分页内容和页数信息到 Webview
-            currentPanel.webview.postMessage({
-                command: 'updateSuggestion',
-                suggestionPages: suggestionPages,
-                totalPages: suggestionPages.length,
-            });
-        
-            // 跳转到 webview3
-            await showWebview(context, 'webview3');
-        } else if (result === 'timeout') {
-            console.log('Random wait time elapsed. Navigating to webview3...');
-            await showWebview(context, 'webview3', 'AI is still processing. This is a placeholder suggestion.');
-        } else {
-            console.error('Failed to retrieve AI suggestions.');
-            vscode.window.showErrorMessage('Failed to retrieve AI suggestions.');
-        }      
-      } else if (message.command === 'close') {
-          currentPanel.dispose();
-          currentPanel = null;
-          console.log('Webview closed.');
-      }
-  });
-  
-  return currentPanel;
+    // 读取 HTML 文件内容
+    let htmlContent = fs.readFileSync(reactAppPath, 'utf8');
+
+    // 计算静态资源访问路径（替换绝对路径为 VSCode 可识别的 webview URI）
+    const baseUri = currentPanel.webview.asWebviewUri(
+        vscode.Uri.file(path.join(context.extensionPath, 'GUI', 'build'))
+    );
+    const publicUri = currentPanel.webview.asWebviewUri(
+        vscode.Uri.file(path.join(context.extensionPath, 'public'))
+    );
+
+    // 修正前端资源引用
+    htmlContent = htmlContent
+        .replace(/"\/static\//g, `"${baseUri}/static/`) // 替换JS、CSS等静态资源
+        .replace(/"\/favicon.ico/g, `"${baseUri}/favicon.ico`) // 替换favicon
+        .replace(/"\.\/bg\.png"/g, `"${publicUri}/bg.png"`);    // 替换背景图
+
+    // 允许 Webview 加载本地资源
+    currentPanel.webview.options = {
+        enableScripts: true,
+        localResourceRoots: [
+            vscode.Uri.file(path.join(context.extensionPath, 'GUI', 'build')),
+            vscode.Uri.file(path.join(context.extensionPath, 'public'))
+        ]
+    };
+
+    // 最后，将修正后的 HTML 赋值给 Webview
+    currentPanel.webview.html = htmlContent;
 }
 
-async function startPeriodicCheck(context) {
-  if (!inWebview4) {
-    console.log('Not in webview4, skipping periodic check start.');
-    return;
-  }
-
-  if (checkInterval !== null) {
-      console.log('Periodic check is already running. Skipping restart.');
-      return;
-  }
-
-  console.log('Starting periodic check...');
-  const editor = vscode.window.activeTextEditor;
-  if (editor) {
-      lastKnownCode = editor.document.getText(); // 缓存代码
-  }
-
-  const codeToCheck = editor ? editor.document.getText() : lastKnownCode;
-  if (codeToCheck && inWebview4) {
-      const hasErrors = await detectErrors(codeToCheck);
-      if (hasErrors && inWebview4) {
-          console.log('Errors detected immediately. Showing webview...');
-          lastCheckedCode = codeToCheck;
-          await showWebview(context, 'webview');
-      }
-  }
-
-  checkInterval = setInterval(async () => {
-      if (!inWebview4) {
-        console.log('Not in webview4 during interval, skipping this cycle.');
+/**
+ * 发送“光标选中的区域”到 Webview
+ * 如果没选中，就提示用户
+ */
+async function sendSelectedRange(context) {
+    const editor = vscode.window.activeTextEditor;
+    if (!editor) {
+        vscode.window.showInformationMessage("No active editor found.");
         return;
-      }
+    }
 
-      console.log('Periodic check triggered...');
-      const editor = vscode.window.activeTextEditor;
-      if (editor) {
-          lastKnownCode = editor.document.getText();
-      }
+    const { document, selection } = editor;
+    const selectedText = document.getText(selection).trim();
 
-      const codeToCheck = editor ? editor.document.getText() : lastKnownCode;
-
-      if (!codeToCheck) {
-          console.log('No code to check. Skipping this cycle.');
-          return;
-      }
-
-      if (!inWebview4) {
-        console.log('Not in webview4, skipping detection this cycle.');
+    if (!selectedText) {
+        vscode.window.showInformationMessage("Please select some text first.");
         return;
-      }
+    }
 
-      const hasErrors = await detectErrors(codeToCheck);
-      if (hasErrors && inWebview4) {
-          console.log('Errors detected during periodic check. Showing webview...');
-          lastCheckedCode = codeToCheck;
-          stopPeriodicCheck();
-          await showWebview(context, 'webview');
-      }
-  }, 10000); // 每10秒检测一次
+    // 确保 Webview 打开
+    await showWebview(context);
+
+    // 在前端自动当作“用户输入”
+    if (currentPanel) {
+        currentPanel.webview.postMessage({
+            command: 'injectUserCode',
+            text: selectedText
+        });
+        //vscode.window.showInformationMessage("Selected text injected to Webview as user input!");
+    }
 }
 
-function stopPeriodicCheck() {
-  if (checkInterval !== null) {
-      console.log('Stopping periodic check...');
-      clearInterval(checkInterval);
-      checkInterval = null; 
-  } else {
-      console.log('No periodic check to stop.');
-  }
+/**
+ * 发送“当前文件”到 Webview，但不直接调用 AI
+ * 让前端当作用户输入，再由前端触发 AI 请求
+ */
+async function sendCurrentFile(context) {
+    const editor = vscode.window.activeTextEditor;
+    if (!editor) {
+        vscode.window.showInformationMessage("No active editor found.");
+        return;
+    }
+
+    const fullText = editor.document.getText();
+    if (!fullText.trim()) {
+        vscode.window.showInformationMessage("Current file is empty.");
+        return;
+    }
+
+    // 确保 Webview 已经打开
+    await showWebview(context);
+
+    if (currentPanel) {
+        // 发一条特殊指令给前端，让前端自己决定怎么处理
+        currentPanel.webview.postMessage({
+            command: 'injectUserCode',
+            text: fullText
+        });
+        //vscode.window.showInformationMessage("File code injected to Webview as user input!");
+    }
 }
 
-async function showWebview4(context) {
-  console.log('Navigating to webview4...');
-  stopPeriodicCheck(); // 停止旧的检测
-  console.log('Old periodic check stopped. Showing webview4 now...');
-  await showWebview(context, 'webview4');
-  // 进入webview4后再启动定时检测
-  if (inWebview4) {
-    startPeriodicCheck(context);
-  }
-}
 
-// Activate the extension
+/**
+ * 插件被激活时会调用此方法
+ * @param {vscode.ExtensionContext} context
+ */
 function activate(context) {
-  console.log('Extension "programming-grammarly" is now active!');
+    console.log('Extension "programming-grammarly" is now active!');
 
-  let checkCodeCommand = vscode.commands.registerCommand('programming-grammarly.checkCode', async function () {
-    showWebview4(context);
-  });
+    // 命令1：打开 AI Chat 面板
+    context.subscriptions.push(
+        vscode.commands.registerCommand('programming-grammarly.openChat', () => {
+            console.log('Opening AI Chat...');
+            showWebview(context);
+        })
+    );
 
-  context.subscriptions.push(checkCodeCommand);
+    // 命令2：检查代码
+    context.subscriptions.push(
+        vscode.commands.registerCommand('programming-grammarly.checkCode', () => {
+            // 你原有的逻辑...
+            vscode.window.showInformationMessage("Check Code with AI (not implemented yet).");
+        })
+    );
+
+    // 命令3：发送当前方法
+    context.subscriptions.push(
+        vscode.commands.registerCommand('programming-grammarly.sendSelectedRange', async () => {
+            await sendSelectedRange(context);
+        })
+    );
+
+    // 命令4：发送当前文件
+    context.subscriptions.push(
+        vscode.commands.registerCommand('programming-grammarly.sendCurrentFile', async () => {
+            await sendCurrentFile(context);
+        })
+    );    
 }
 
+/**
+ * 插件被停用时会调用此方法
+ */
 function deactivate() {
-  stopPeriodicCheck();
+    if (currentPanel) {
+        currentPanel.dispose();
+        currentPanel = null;
+    }
 }
 
 module.exports = {
-  activate,
-  deactivate,
+    activate,
+    deactivate,
 };
