@@ -1,9 +1,18 @@
 const vscode = require('vscode');
 const fs = require('fs');
 const path = require('path');
+
 require('dotenv').config({ path: path.resolve(__dirname, '.env') });
 
-let currentPanel = null; // 缓存当前的 WebviewPanel
+let currentPanel = null;
+let lastChangeTime = Date.now();
+let changeCount = 0;
+
+// 监听代码变化
+vscode.workspace.onDidChangeTextDocument((event) => {
+    changeCount += event.contentChanges.length;
+    lastChangeTime = Date.now();
+});
 
 /**
  * 动态加载 OpenAI 依赖
@@ -24,30 +33,21 @@ async function getOpenAIInstance() {
 }
 
 /**
- * 调用 OpenAI，获取 AI 建议
- * @param {string} codeSnippet - 需要分析的代码或文本
+ * **通用 AI 查询方法**
+ * @param {string} prompt
+ * @returns {Promise<string>}
  */
-async function getAISuggestion(codeSnippet) {
+async function getAISuggestion(prompt) {
     try {
         const openai = await getOpenAIInstance();
         const response = await openai.chat.completions.create({
             model: 'gpt-3.5-turbo',
-            messages: [
-                {
-                    role: 'system',
-                    content: 'You are a helpful assistant providing structured code improvement suggestions.'
-                },
-                {
-                    role: 'user',
-                    content: `Analyze this code and suggest improvements:\n\n${codeSnippet}`
-                }
-            ],
+            messages: [{ role: 'user', content: prompt }],
             max_tokens: 500,
             temperature: 0.7,
         });
 
-        const suggestion = response.choices[0].message.content.trim();
-        return suggestion;
+        return response.choices[0].message.content.trim();
     } catch (error) {
         console.error('Error getting AI suggestion:', error);
         return '⚠️ AI 请求失败，请检查 API 配置或网络状态！';
@@ -55,73 +55,160 @@ async function getAISuggestion(codeSnippet) {
 }
 
 /**
- * 展示（或创建）Webview，并与前端进行消息通信
- * @param {vscode.ExtensionContext} context
+ * **AI 代码错误检测**
+ * - 询问 AI 代码是否有错误
+ * @param {string} code
+ * @returns {Promise<boolean>}
+ */
+async function detectCodeErrors(code) {
+    const prompt = `
+    Analyze the following code for syntax and logical errors.
+    If there are any issues, respond in a polite and encouraging manner.
+    If no issues are found, just respond: "Everything looks good! Keep coding. 💪"
+
+    Code:
+    ${code}
+    `;
+
+    console.log("📤 Sending AI code check request:\n", prompt);
+    console.log("🟡 Sending request to AI...");
+    
+    const response = await getAISuggestion(prompt);
+    
+    console.log("🔵 AI Response:", response);
+
+    // **如果 AI 认为代码是正确的，就返回 false**
+    if (response.trim().toLowerCase().includes("everything looks good")) {
+        return false; // ✅ 确保返回 boolean 值
+    }
+
+    return true; // ✅ 代码有问题，返回 true
+}
+
+
+
+/**
+ * **AI 详细代码分析**
+ * - 让 AI 提供详细的代码改进建议
+ * @param {string} code
+ * @returns {Promise<string>}
+ */
+async function analyzeCodeWithAI(code) {
+    const prompt = `
+    Analyze the following code and provide:
+    - Syntax errors
+    - Logical errors
+    - Best practice suggestions
+    
+    Code:
+    ${code}
+    `;
+
+    console.log("📡 发送代码分析请求到 AI...");
+    const response = await getAISuggestion(prompt);
+    console.log("🔵 AI 返回的代码分析:", response);
+
+    return response;
+}
+
+
+/**
+ * 展示 Webview
  */
 async function showWebview(context) {
-    // 如果面板已经存在，则让它显示到前台即可
     if (currentPanel) {
         currentPanel.reveal(vscode.ViewColumn.Beside);
         return;
     }
 
-    // 否则，创建一个新的 WebviewPanel
     currentPanel = vscode.window.createWebviewPanel(
         'aiChat',
         'AI Chat',
         vscode.ViewColumn.Beside,
-        {
-            enableScripts: true,
-            retainContextWhenHidden: true, // 让 Webview 不会因为隐藏就丢失状态
-        }
+        { enableScripts: true, retainContextWhenHidden: true }
     );
 
-    // 当用户关闭面板时重置
     currentPanel.onDidDispose(() => {
         currentPanel = null;
     });
 
-    // 注册从 Webview 发来的消息监听器
+    // **确保监听器只绑定一次**
     currentPanel.webview.onDidReceiveMessage(async (message) => {
-        if (message.command === 'sendMessage') {
-            console.log('收到 WebView 消息:', message.text);
-
-            // 调用 OpenAI，获取回复
-            const aiResponse = await getAISuggestion(message.text);
-            console.log('AI 回复:', aiResponse);
-
-            // 发消息给 WebView
-            if (currentPanel) {
-                currentPanel.webview.postMessage({ text: aiResponse });
+        console.log("📩 WebView received message:", message);
+    
+        if (message.command === "sendMessage") {
+            console.log("💬 User input:", message.text);
+    
+            if (message.text.toLowerCase() === "yes") {
+                console.log("🔎 User requested code analysis");
+    
+                let editor = vscode.window.activeTextEditor;
+    
+                // **尝试获取一个可用的代码编辑器**
+                if (!editor) {
+                    console.log("⚠️ No active text editor, searching for a visible one...");
+                    const visibleEditors = vscode.window.visibleTextEditors;
+                    for (const e of visibleEditors) {
+                        if (e.document.uri.scheme === "file") { 
+                            editor = e;
+                            break;
+                        }
+                    }
+                }
+    
+                if (!editor) {
+                    console.log("❌ No available text editor, cannot analyze!");
+                    currentPanel.webview.postMessage({ text: "⚠️ Please open a code file before running analysis." });
+                    return;
+                }
+    
+                const code = editor.document.getText();
+                console.log("📜 Code to analyze:", code);
+    
+                // **确保 AI 正确分析代码**
+                const analysis = await analyzeCodeWithAI(code);
+                console.log("🤖 AI Code Analysis Result:", analysis);
+    
+                if (currentPanel) {
+                    currentPanel.webview.postMessage({ text: `🔍 AI Code Analysis:\n${analysis}` });
+                    console.log("✅ AI code analysis sent to WebView.");
+                }
+            } else if (message.text.toLowerCase() === "no") {
+                console.log("✅ User chose to ignore this analysis.");
+                currentPanel.webview.postMessage({ text: "✅ You chose to ignore this analysis." });
+            } else {
+                // 让 AI 处理普通聊天请求
+                const aiResponse = await getAISuggestion(message.text);
+                console.log("🤖 AI Response:", aiResponse);
+    
+                if (currentPanel) {
+                    currentPanel.webview.postMessage({ text: aiResponse });
+                    console.log("✅ AI response sent to WebView.");
+                }
             }
         }
     });
+    
 
-    // 读取你的 React 构建产物 (build/index.html)
     const reactAppPath = path.join(context.extensionPath, 'GUI', 'build', 'index.html');
     if (!fs.existsSync(reactAppPath)) {
         console.error('React build/index.html 文件不存在！请先构建前端。');
         return;
     }
 
-    // 读取 HTML 文件内容
     let htmlContent = fs.readFileSync(reactAppPath, 'utf8');
-
-    // 计算静态资源访问路径（替换绝对路径为 VSCode 可识别的 webview URI）
-    const baseUri = currentPanel.webview.asWebviewUri(
-        vscode.Uri.file(path.join(context.extensionPath, 'GUI', 'build'))
+    const baseUri = currentPanel.webview.asWebviewUri(vscode.Uri.file(
+        path.join(context.extensionPath, 'GUI', 'build'))
     );
-    const publicUri = currentPanel.webview.asWebviewUri(
-        vscode.Uri.file(path.join(context.extensionPath, 'public'))
+    const publicUri = currentPanel.webview.asWebviewUri(vscode.Uri.file(
+        path.join(context.extensionPath, 'public'))
     );
 
-    // 修正前端资源引用
     htmlContent = htmlContent
-        .replace(/"\/static\//g, `"${baseUri}/static/`) // 替换JS、CSS等静态资源
-        .replace(/"\/favicon.ico/g, `"${baseUri}/favicon.ico`) // 替换favicon
-        .replace(/"\.\/bg\.png"/g, `"${publicUri}/bg.png"`);    // 替换背景图
+        .replace(/"\/static\//g, `"${baseUri}/static/`)
+        .replace(/"\/favicon.ico/g, `"${baseUri}/favicon.ico`)
+        .replace(/"\.\/bg\.png"/g, `"${publicUri}/bg.png"`);
 
-    // 允许 Webview 加载本地资源
     currentPanel.webview.options = {
         enableScripts: true,
         localResourceRoots: [
@@ -130,9 +217,27 @@ async function showWebview(context) {
         ]
     };
 
-    // 最后，将修正后的 HTML 赋值给 Webview
     currentPanel.webview.html = htmlContent;
 }
+
+
+setInterval(async () => {
+    if (!vscode.window.activeTextEditor) return;
+
+    console.log("🔄 Running automatic code check...");
+
+    const code = vscode.window.activeTextEditor.document.getText();
+    const hasError = await detectCodeErrors(code);
+
+    if (hasError && currentPanel) {
+        console.log("⚠️ AI detected potential issues, notifying WebView...");
+        currentPanel.webview.postMessage({
+            text: "⚠️ I found some potential issues in your code. Would you like to review them? (Reply 'Yes' or 'No')"
+        });
+    } else {
+        console.log("✅ Code check complete, no issues found.");
+    }
+}, 20000);
 
 /**
  * 发送“光标选中的区域”到 Webview
@@ -196,43 +301,44 @@ async function sendCurrentFile(context) {
     }
 }
 
-
 /**
  * 插件被激活时会调用此方法
- * @param {vscode.ExtensionContext} context
  */
 function activate(context) {
     console.log('Extension "programming-grammarly" is now active!');
 
-    // 命令1：打开 AI Chat 面板
     context.subscriptions.push(
         vscode.commands.registerCommand('programming-grammarly.openChat', () => {
             console.log('Opening AI Chat...');
             showWebview(context);
         })
     );
+        // 命令3：发送当前方法
+        context.subscriptions.push(
+            vscode.commands.registerCommand('programming-grammarly.sendSelectedRange', async () => {
+                await sendSelectedRange(context);
+            })
+        );
+    
+        // 命令4：发送当前文件
+        context.subscriptions.push(
+            vscode.commands.registerCommand('programming-grammarly.sendCurrentFile', async () => {
+                await sendCurrentFile(context);
+            })
+        ); 
 
-    // 命令2：检查代码
     context.subscriptions.push(
-        vscode.commands.registerCommand('programming-grammarly.checkCode', () => {
-            // 你原有的逻辑...
-            vscode.window.showInformationMessage("Check Code with AI (not implemented yet).");
+        vscode.commands.registerCommand('programming-grammarly.checkCode', async () => {
+            if (vscode.window.activeTextEditor) {
+                const code = vscode.window.activeTextEditor.document.getText();
+                const analysis = await analyzeCodeWithAI(code);
+                vscode.window.showInformationMessage("AI 分析完成，请查看 WebView。");
+                if (currentPanel) {
+                    currentPanel.webview.postMessage({ text: `🔍 AI 代码分析:\n${analysis}` });
+                }
+            }
         })
     );
-
-    // 命令3：发送当前方法
-    context.subscriptions.push(
-        vscode.commands.registerCommand('programming-grammarly.sendSelectedRange', async () => {
-            await sendSelectedRange(context);
-        })
-    );
-
-    // 命令4：发送当前文件
-    context.subscriptions.push(
-        vscode.commands.registerCommand('programming-grammarly.sendCurrentFile', async () => {
-            await sendCurrentFile(context);
-        })
-    );    
 }
 
 /**
