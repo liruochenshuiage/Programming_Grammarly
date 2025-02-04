@@ -5,15 +5,7 @@ const path = require('path');
 require('dotenv').config({ path: path.resolve(__dirname, '.env') });
 
 let currentPanel = null;
-let lastChangeTime = Date.now();
-let changeCount = 0;
-
 // 监听代码变化
-vscode.workspace.onDidChangeTextDocument((event) => {
-    changeCount += event.contentChanges.length;
-    lastChangeTime = Date.now();
-});
-
 /**
  * 动态加载 OpenAI 依赖
  */
@@ -62,9 +54,9 @@ async function getAISuggestion(prompt) {
  */
 async function detectCodeErrors(code) {
     const prompt = `
-    Analyze the following code for syntax and logical errors.
+    Analyze the following code for errors.
     If there are any issues, respond in a polite and encouraging manner.
-    If no issues are found, just respond: "Everything looks good! Keep coding. 💪"
+    If no issues are found, just respond: "yes"
 
     Code:
     ${code}
