@@ -1,10 +1,18 @@
 const vscode = require('vscode');
 const fs = require('fs');
 const path = require('path');
+const testHelper = require('./test_helper'); // ✅ 确保正确引入
+const { detectNewFunction, generateUnitTest } = require("./test_helper");
+
+
 
 require('dotenv').config({ path: path.resolve(__dirname, '.env') });
 
 let currentPanel = null;
+let lastCodeSnapshot = "";
+let lastGeneratedTestCode = "";
+let pendingSnapshot = "";  // ✅ 解决未定义的问题
+
 // 监听代码变化
 /**
  * 动态加载 OpenAI 依赖
@@ -103,40 +111,28 @@ async function analyzeCodeWithAI(code) {
     return response;
 }
 
-
 /**
- * 展示 Webview
+ * **WebView 监听用户回复**
  */
-async function showWebview(context) {
-    if (currentPanel) {
-        currentPanel.reveal(vscode.ViewColumn.Beside);
+function setupWebviewListener() {
+    if (!currentPanel || !currentPanel.webview) {
+        console.error("❌ Error: WebView is not initialized!");
         return;
     }
 
-    currentPanel = vscode.window.createWebviewPanel(
-        'aiChat',
-        'AI Chat',
-        vscode.ViewColumn.Beside,
-        { enableScripts: true, retainContextWhenHidden: true }
-    );
-
-    currentPanel.onDidDispose(() => {
-        currentPanel = null;
-    });
-
-    // **确保监听器只绑定一次**
+    console.log("✅ Setting up WebView listener...");
+    
     currentPanel.webview.onDidReceiveMessage(async (message) => {
         console.log("📩 WebView received message:", message);
     
         if (message.command === "sendMessage") {
-            console.log("💬 User input:", message.text);
+            const userInput = message.text.trim().toLowerCase();
     
-            if (message.text.toLowerCase() === "yes") {
-                console.log("🔎 User requested code analysis");
-    
+            // 处理 AI 代码分析请求
+            if (userInput === "yes" && !message.context) {
+                console.log("🔍 User confirmed AI code analysis...");
                 let editor = vscode.window.activeTextEditor;
     
-                // **尝试获取一个可用的代码编辑器**
                 if (!editor) {
                     console.log("⚠️ No active text editor, searching for a visible one...");
                     const visibleEditors = vscode.window.visibleTextEditors;
@@ -149,52 +145,158 @@ async function showWebview(context) {
                 }
     
                 if (!editor) {
-                    console.log("❌ No available text editor, cannot analyze!");
-                    currentPanel.webview.postMessage({ text: "⚠️ Please open a code file before running analysis." });
+                    console.log("❌ No available text editor for code analysis!");
+                    currentPanel.webview.postMessage({ text: "⚠️ Please open a code file before AI analysis." });
                     return;
                 }
     
                 const code = editor.document.getText();
                 console.log("📜 Code to analyze:", code);
     
-                // **确保 AI 正确分析代码**
                 const analysis = await analyzeCodeWithAI(code);
                 console.log("🤖 AI Code Analysis Result:", analysis);
     
                 if (currentPanel) {
-                    currentPanel.webview.postMessage({ text: `🔍 AI Code Analysis:\n${analysis}` });
-                    console.log("✅ AI code analysis sent to WebView.");
+                    currentPanel.webview.postMessage({
+                        text: `🔍 AI Code Analysis:\n${analysis}`
+                    });
                 }
-            } else if (message.text.toLowerCase() === "no") {
-                console.log("✅ User chose to ignore this analysis.");
-                currentPanel.webview.postMessage({ text: "✅ You chose to ignore this analysis." });
-            } else {
-                // 让 AI 处理普通聊天请求
-                const aiResponse = await getAISuggestion(message.text);
-                console.log("🤖 AI Response:", aiResponse);
+    
+                return;
+            }
+    
+            // 处理测试生成
+            if (userInput === "yes" && message.context === "test") {
+                console.log("🛠️ User confirmed test generation...");
+                let editor = vscode.window.activeTextEditor;
+    
+                if (!editor) {
+                    console.log("⚠️ No active text editor, searching for a visible one...");
+                    const visibleEditors = vscode.window.visibleTextEditors;
+                    for (const e of visibleEditors) {
+                        if (e.document.uri.scheme === "file") { 
+                            editor = e;
+                            break;
+                        }
+                    }
+                }
+    
+                if (!editor) {
+                    console.log("❌ No available text editor, cannot generate test!");
+                    currentPanel.webview.postMessage({ text: "⚠️ Please open a code file before generating tests." });
+                    return;
+                }
+    
+                const currentCode = pendingSnapshot || editor.document.getText();
+                console.log("📜 代码快照:", currentCode);
+    
+                if (!currentCode.trim()) {
+                    console.log("⚠️ 当前代码为空，跳过测试生成！");
+                    currentPanel.webview.postMessage({ text: "⚠️ Code is empty, cannot generate tests." });
+                    return;
+                }
+    
+                const newFunctions = detectNewFunction(currentCode, lastCodeSnapshot);
+                console.log("🆕 重新检测新函数:", newFunctions);
+    
+                if (newFunctions.length === 0) {
+                    console.log("❌ No new functions detected.");
+                    currentPanel.webview.postMessage({ text: "⚠️ No new functions detected for test generation." });
+                    return;
+                }
+    
+                const testCode = await generateUnitTest(currentCode, newFunctions);
+                console.log("🔵 AI 生成的测试代码:", testCode);
     
                 if (currentPanel) {
-                    currentPanel.webview.postMessage({ text: aiResponse });
-                    console.log("✅ AI response sent to WebView.");
+                    console.log("📤 发送测试代码到 WebView...");
+                    currentPanel.webview.postMessage({
+                        command: "displayTest",
+                        text: `📝 AI 生成的测试代码:\n${testCode}`
+                    });
                 }
+    
+                lastCodeSnapshot = currentCode;
+                pendingSnapshot = "";
+                return;
+            }
+    
+            // **✅ 处理普通 AI 交互**
+            console.log("💬 User input:", message.text);
+            const aiResponse = await getAISuggestion(message.text);
+            console.log("🤖 AI Response:", aiResponse);
+    
+            if (currentPanel) {
+                currentPanel.webview.postMessage({
+                    text: aiResponse
+                });
+                console.log("✅ AI response sent to WebView.");
             }
         }
-    });
+    });    
     
-
-    const reactAppPath = path.join(context.extensionPath, 'GUI', 'build', 'index.html');
-    if (!fs.existsSync(reactAppPath)) {
-        console.error('React build/index.html 文件不存在！请先构建前端。');
+    // ✅ **修复重复询问问题**
+    vscode.workspace.onDidSaveTextDocument(async (document) => {
+        console.log("💾 文件保存事件触发...");
+        
+        const currentCode = document.getText();
+        console.log("📜 当前代码:\n", currentCode);
+    
+        if (currentCode === lastCodeSnapshot) {
+            console.log("⏭️ 代码未变更，跳过检测...");
+            return;
+        }
+    
+        const newFunctions = detectNewFunction(currentCode, lastCodeSnapshot);
+    
+        if (newFunctions.length > 0) {
+            console.log("🆕 检测到新函数:", newFunctions);
+    
+            if (currentPanel) {
+                console.log("🤖 询问用户是否生成测试...");
+                currentPanel.webview.postMessage({
+                    command: "askGenerateTest",
+                    text: "🎉 Well done! I found you finished a new method. Would you like to generate a test for it? (Yes / No)"
+                });
+    
+                pendingSnapshot = currentCode;  // ✅ 只在检测到新函数时更新 `pendingSnapshot`
+            }
+        } else {
+            console.log("❌ No new functions detected.");
+        }
+    });       
+}
+/**
+ * **展示 WebView**
+ */
+async function showWebview(context) {
+    if (currentPanel) {
+        currentPanel.reveal(vscode.ViewColumn.Beside);
         return;
     }
 
-    let htmlContent = fs.readFileSync(reactAppPath, 'utf8');
-    const baseUri = currentPanel.webview.asWebviewUri(vscode.Uri.file(
-        path.join(context.extensionPath, 'GUI', 'build'))
+    currentPanel = vscode.window.createWebviewPanel(
+        "aiChat",
+        "AI Chat",
+        vscode.ViewColumn.Beside,
+        { enableScripts: true, retainContextWhenHidden: true }
     );
-    const publicUri = currentPanel.webview.asWebviewUri(vscode.Uri.file(
-        path.join(context.extensionPath, 'public'))
-    );
+
+    currentPanel.onDidDispose(() => {
+        currentPanel = null;
+    });
+
+    setupWebviewListener(); // ✅ 确保 WebView 监听用户输入
+
+    const reactAppPath = path.join(context.extensionPath, "GUI", "build", "index.html");
+    if (!fs.existsSync(reactAppPath)) {
+        console.error("React build/index.html 文件不存在！请先构建前端。");
+        return;
+    }
+
+    let htmlContent = fs.readFileSync(reactAppPath, "utf8");
+    const baseUri = currentPanel.webview.asWebviewUri(vscode.Uri.file(path.join(context.extensionPath, "GUI", "build")));
+    const publicUri = currentPanel.webview.asWebviewUri(vscode.Uri.file(path.join(context.extensionPath, "public")));
 
     htmlContent = htmlContent
         .replace(/"\/static\//g, `"${baseUri}/static/`)
@@ -204,8 +306,8 @@ async function showWebview(context) {
     currentPanel.webview.options = {
         enableScripts: true,
         localResourceRoots: [
-            vscode.Uri.file(path.join(context.extensionPath, 'GUI', 'build')),
-            vscode.Uri.file(path.join(context.extensionPath, 'public'))
+            vscode.Uri.file(path.join(context.extensionPath, "GUI", "build")),
+            vscode.Uri.file(path.join(context.extensionPath, "public"))
         ]
     };
 
@@ -224,12 +326,13 @@ setInterval(async () => {
     if (hasError && currentPanel) {
         console.log("⚠️ AI detected potential issues, notifying WebView...");
         currentPanel.webview.postMessage({
-            text: "⚠️ I found some potential issues in your code. Would you like to review them? (Reply 'Yes' or 'No')"
+            text: "✨ Nice work! I reviewed your code and noticed some potential improvements. Would you like to check them? (Yes / No)"
         });
     } else {
         console.log("✅ Code check complete, no issues found.");
     }
 }, 20000);
+
 
 /**
  * 发送“光标选中的区域”到 Webview
@@ -292,6 +395,9 @@ async function sendCurrentFile(context) {
         //vscode.window.showInformationMessage("File code injected to Webview as user input!");
     }
 }
+
+
+
 
 /**
  * 插件被激活时会调用此方法

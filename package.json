@@ -28,6 +28,10 @@
           "title": "Send Selected Range"
         },
       {
+          "command": "test-helper.generateTest",
+          "title": "Generate Unit Test"
+      },
+      {
         "command": "programming-grammarly.sendCurrentFile",
         "title": "Send Current File to AI"
       }
