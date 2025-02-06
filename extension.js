@@ -212,7 +212,7 @@ function setupWebviewListener() {
                     console.log("📤 发送测试代码到 WebView...");
                     currentPanel.webview.postMessage({
                         command: "displayTest",
-                        text: `📝 AI 生成的测试代码:\n${testCode}`
+                        text: `${testCode}`
                     });
                 }
     
